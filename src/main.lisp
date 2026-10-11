@@ -2,9 +2,17 @@
 
 (in-package #:mandelbrot-gtk)
 
+(defstruct view
+  (cx -0.5d0 :type double-float)
+  (cy 0d0 :type double-float)
+  (scale (error "A view needs :scale") :type double-float)
+  (max-iter 256 :type fixnum))
 
 ;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
 ;;; function it calls) changes the running program.
+
+(defun fit-view (width height)
+  (make-view :scale (max (/ 3.5d0 width) (/ 2.5d0 height))))  
 
 (defun pixel-offset (stride x y)
   (+ (* y stride) (* x 4)))
@@ -23,26 +31,50 @@
 (declaim (inline make-pixel))
 (defun make-pixel (r g b)
   (declare (type (unsigned-byte 8) r g b))
-   (logior 
-    #xFF000000 ;; this is the alpha
-    (ash r 16)
-    (ash g 8)
-    b))
+  (logior 
+   #xFF000000 ;; this is the alpha
+   (ash r 16)
+   (ash g 8)
+   b))
 
-(defun gradient-buffer (width height)
-  (let ((buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32))))
-    (loop for x from 0 below width
-          for r = (if (> width 1) (round (* 255 (/ (float x) (1- width)))) 0)
-          do (loop for y from 0 below height
-                   for b = (if (> height 1) (round (* 255 (/ (float y) (1- height)))) 0)
-                   do (setf (aref buffer (+ (* y width) x))
-                            (make-pixel r 0 b))))
+(defun iter->pixel (n max-iter)
+  (let ((grey (if (= n max-iter) 
+                  0
+                  (floor (* 255 n) max-iter))))
+    (make-pixel grey grey grey)))
+
+(declaim (inline pixel->point))
+(defun pixel->point (view width height x y)
+  (declare (optimize speed))
+  (declare (type (unsigned-byte 16) width height x y))
+  (let* ((scale (view-scale view))
+         (center-x (/ width 2d0))
+         (center-y (/ height 2d0))
+         (shift-x (* scale (- x center-x)))
+         (shift-y (* scale (- y center-y))))
+    (values (+ (view-cx view) shift-x)
+          (- (view-cy view) shift-y))))
+
+
+(defun render-buffer (view width height)
+  (declare (optimize speed))
+  (declare (type (unsigned-byte 16) width height))
+  (let ((buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32)))
+        (max-iter (view-max-iter view)))
+    (loop for y from 0 below height
+          do
+          (loop for x from 0 below width
+                do (multiple-value-bind (cr ci) (pixel->point view width height x y)
+                (setf (aref buffer (+ (* y width) x))
+                      (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))))
     buffer))
+
     
 (defun draw (area cr width height)
   (declare (ignore area))
-  (let ((surface (cairo:image-surface-create :argb32 width height)))
-    (buffer->surface (gradient-buffer width height) width height surface)
+  (let ((surface (cairo:image-surface-create :argb32 width height))
+        (view (fit-view width height)))
+    (buffer->surface (render-buffer view width height) width height surface)
     (cairo:set-source-surface cr surface 0 0)
     (cairo:paint cr)))
 

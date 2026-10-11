@@ -1,5 +1,6 @@
 (in-package #:mandelbrot-gtk)
 
+(declaim (inline mandelbrot-point))
 (defun mandelbrot-point (cr ci max-iter)
   (declare (optimize speed)
            (type double-float cr ci)

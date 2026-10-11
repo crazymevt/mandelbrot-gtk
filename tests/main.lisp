@@ -31,9 +31,54 @@
               (cffi:mem-ref data :uint32 (+ (* y stride) (* x 4)))
               "pixel( ~d, ~d)" x y))))))
 
-(define-test make-bytes-test
+(define-test make-pixel-test
     :parent mandelbrot-gtk
   (is = #xFF123456 (make-pixel #x12 #x34 #x56))
   (is = #xFFFFFFFF (make-pixel 255 255 255))
   (is = #xFF000000 (make-pixel 0 0 0))
   (is = #xFF102030 (make-pixel #x10 #x20 #x30)))
+
+(define-test pixel->point-test
+    :parent mandelbrot-gtk
+  (is-values (pixel->point (make-view :scale 0.01d0) 100 100 60 50)
+             (= -0.4d0)
+             (= 0.0d0))
+  (is-values (pixel->point (make-view :scale 0.01d0) 100 100 50 40)
+             (= -0.5d0)
+             (= 0.1d0))
+  (is-values (pixel->point (make-view :scale 0.01d0) 100 100 50 60)
+             (= -0.5d0)
+             (= -0.1d0))
+  (is-values (pixel->point (make-view :scale 0.0034d0) 1024 768 512 384)
+             (= -0.5d0)
+             (= 0d0)))
+
+(define-test fit-view-test
+    :parent mandelbrot-gtk
+  (is = 0.00341796875d0 (view-scale (fit-view 1024 768)))
+  (is = 0.035d0 (view-scale (fit-view 100 100)))
+  
+  (let* ((w 100)
+         (h 100)
+         (view (fit-view w h)))
+    (multiple-value-bind (left top) (pixel->point view w h 0 0)
+      (true (<= left -2.25d0))
+      (true (>= top 1.25d0)))
+    (multiple-value-bind (right bottom) (pixel->point view w h w h)
+      (true (>= right 1.25d0))
+      (true (<= bottom -1.25d0))))
+ 
+  (dolist (size '((100 100) (1024 768) (100 400) (800 100)))
+    (destructuring-bind (w h) size
+      (multiple-value-bind (left top) (pixel->point (fit-view w h) w h 0 0)
+        (true (<= left -2.25d0))
+        (true (>= top 1.25d0)))
+      (multiple-value-bind (right bottom) (pixel->point (fit-view w h) w h w h)
+        (true (>= right 1.25d0))
+        (true (<= bottom -1.25d0))))))
+
+(define-test iter->pixel-test
+    :parent mandelbrot-gtk
+  (is = #xFF000000 (iter->pixel 256 256))
+  (is = #xFF000000 (iter->pixel 0 0))
+  (is = #xFF020202 (iter->pixel 3 256)))
