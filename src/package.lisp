@@ -2,4 +2,4 @@
 
 (defpackage #:mandelbrot-gtk
   (:use #:cl)
-  (:export #:mandelbrot-point #:main))
+  (:export #:mandelbrot-point #:main #:buffer->surface))
