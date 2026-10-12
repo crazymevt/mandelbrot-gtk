@@ -5,7 +5,7 @@
   :author "Jessie Hughart"
   :license "MIT"
   :version "0.1.0"
-  :depends-on ("gtk4")
+  :depends-on (:gtk4 :bordeaux-threads)
   :components ((:module "src"
                 :serial t
                 :components ((:file "package")

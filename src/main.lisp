@@ -6,7 +6,14 @@
   (cx -0.5d0 :type double-float)
   (cy 0d0 :type double-float)
   (scale (error "A view needs :scale") :type double-float)
-  (max-iter 256 :type fixnum))
+  (max-iter 256 :type (integer 1 1000000)))
+
+(defstruct render
+  (buffer (error "render needs :buffer") :type (simple-array (unsigned-byte 32) (*)))
+  (width (error "render needs :width") :type (unsigned-byte 16))
+  (height (error "render needs :height") :type (unsigned-byte 16))
+  (view (error "render needs :view") :type view)
+  (next-row 0 :type sb-ext:word))
 
 ;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
 ;;; function it calls) changes the running program.
@@ -37,6 +44,7 @@
    (ash g 8)
    b))
 
+(declaim (inline iter->pixel))
 (defun iter->pixel (n max-iter)
   (let ((grey (if (= n max-iter) 
                   0
@@ -53,10 +61,40 @@
          (shift-x (* scale (- x center-x)))
          (shift-y (* scale (- y center-y))))
     (values (+ (view-cx view) shift-x)
-          (- (view-cy view) shift-y))))
+            (- (view-cy view) shift-y))))
 
+(defun render-row (render y)
+  (declare (optimize speed))
+  (declare (type (unsigned-byte 16) y))
+  (let* ((width (render-width render))
+         (height (render-height render))
+         (buffer (render-buffer render))
+         (view (render-view render))
+         (max-iter (view-max-iter view)))
+    (loop for x from 0 below width
+          do (multiple-value-bind (cr ci) (pixel->point view width height x y)
+               (setf (aref buffer (+ (* y width) x))
+                     (iter->pixel (mandelbrot-point cr ci max-iter) max-iter))))))
 
-(defun render-buffer (view width height)
+(defun render-worker (render)
+  (let ((height (render-height render)))
+    (loop for y = (sb-ext:atomic-incf (render-next-row render))
+          until (>= y height)
+          do (render-row render y))))
+
+(defun start-render (view width height threads)
+  (declare (type (unsigned-byte 16) width height))
+  (let ((render (make-render :buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32))
+                             :width width
+                             :height height
+                             :view view)))
+    (values render
+            (loop for thread from 0 below threads 
+                  collect (bt:make-thread (lambda () 
+                                            (render-worker render))
+                                          :name (format nil "render-~d" thread))))))
+
+(defun render-buffer-single (view width height)
   (declare (optimize speed))
   (declare (type (unsigned-byte 16) width height))
   (let ((buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32)))
@@ -65,8 +103,8 @@
           do
           (loop for x from 0 below width
                 do (multiple-value-bind (cr ci) (pixel->point view width height x y)
-                (setf (aref buffer (+ (* y width) x))
-                      (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))))
+                     (setf (aref buffer (+ (* y width) x))
+                           (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))))
     buffer))
 
     
@@ -74,7 +112,7 @@
   (declare (ignore area))
   (let ((surface (cairo:image-surface-create :argb32 width height))
         (view (fit-view width height)))
-    (buffer->surface (render-buffer view width height) width height surface)
+    (buffer->surface (render-buffer-single view width height) width height surface)
     (cairo:set-source-surface cr surface 0 0)
     (cairo:paint cr)))
 
