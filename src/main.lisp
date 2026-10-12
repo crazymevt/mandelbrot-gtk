@@ -18,6 +18,9 @@
   (height (error "render needs :height") :type (unsigned-byte 16))
   (view (error "render needs :view") :type view)
   (generation (error "render needs :generation") :type fixnum)
+  (surface (error "render needs a :surface"))
+  (drawn-rows 0 :type fixnum)
+  (rows-done 0 :type sb-ext:word)
   (next-row 0 :type sb-ext:word))
 
 ;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
@@ -110,7 +113,8 @@
   (let ((height (render-height render)))
     (loop for y = (sb-ext:atomic-incf (render-next-row render))
           until (or (>= y height) (> **generation** (render-generation render)))
-          do (render-row render y))))
+          do (render-row render y)
+          (sb-ext:atomic-incf (render-rows-done render)))))
 
 (defun start-render (view width height threads)
   (declare (type (unsigned-byte 16) width height))
@@ -119,6 +123,7 @@
                              :width width
                              :height height
                              :view view
+                             :surface (cairo:image-surface-create :argb32 width height)
                              :generation **generation**)))
     (setf *render* render)
     (values render
@@ -143,15 +148,16 @@
 
 (defun draw (area cr width height)
   (declare (ignore area))
-  (let ((surface (cairo:image-surface-create :argb32 width height)))
-    (or *view* (setf *view* (fit-view width height)))
-    (unless (and *render*
-                 (= width (render-width *render*))
-                 (= height (render-height *render*)))
-      (start-render *view* width height 12))
-    (buffer->surface (render-buffer *render*) width height surface)
-    (cairo:set-source-surface cr surface 0 0)
-    (cairo:paint cr)))
+  (or *view* (setf *view* (fit-view width height)))
+  (unless (and *render*
+               (= width (render-width *render*))
+               (= height (render-height *render*)))
+    (start-render *view* width height 12))
+  (let ((done (render-rows-done *render*)))
+    (buffer->surface (render-buffer *render*) width height (render-surface *render*))
+    (setf (render-drawn-rows *render*) done))
+  (cairo:set-source-surface cr (render-surface *render*) 0 0)
+  (cairo:paint cr))
 
 (defun activate (app)
   "Open the main window."
@@ -173,7 +179,11 @@
       
       (gtk:drawing-area-set-draw-func area 'draw)
       (glib:timeout-add glib:+priority-default+ 16
-                        (lambda () (gtk:widget-queue-draw area) running))
+                        (lambda () 
+                          (when (or (null *render*)
+                                     (/= (render-rows-done *render*) (render-drawn-rows *render*)))
+                            (gtk:widget-queue-draw area))
+                          running))
     
       (gobject:connect scroll-controller :scroll
                        (lambda (controller dx dy)
