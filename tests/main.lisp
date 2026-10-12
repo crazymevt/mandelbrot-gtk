@@ -91,8 +91,8 @@
          (zoom (zoom-view view w h 300 200 0.5d0)))
     (multiple-value-bind (zoom-x zoom-y) (pixel->point zoom w h 300 200)
       (multiple-value-bind (org-x org-y) (pixel->point view w h 300 200)
-      (true (< (abs (- zoom-x org-x)) 1d-12))
-      (true (< (abs (- zoom-y org-y)) 1d-12))))))
+        (true (< (abs (- zoom-x org-x)) 1d-12))
+        (true (< (abs (- zoom-y org-y)) 1d-12))))))
 
 (define-test pan-view-test
     :parent mandelbrot-gtk
@@ -104,5 +104,47 @@
          (panned (pan-view view 10 5)))
     (multiple-value-bind (new-x new-y) (pixel->point panned w h (+ x 10) (+ y 5))
       (multiple-value-bind (org-x org-y) (pixel->point view w h x y)
-      (true (< (abs (- new-x org-x)) 1d-12))
-      (true (< (abs (- new-y org-y)) 1d-12))))))
+        (true (< (abs (- new-x org-x)) 1d-12))
+        (true (< (abs (- new-y org-y)) 1d-12))))))
+
+(defun test-render (w h)
+  (make-render :buffer (make-array (* w h) :element-type '(unsigned-byte 32) :initial-element 0)
+               :width w :height h
+               :view (fit-view w h :max-iter 20)
+               :surface nil
+               :generation 0))
+
+(defun collect-block-values-at (row render w h)
+  "this function reads a block of pixels at row row and returns 
+   all the values with duplicates removed."
+  (remove-duplicates
+   (loop for x from row below (+ row +block-size+)
+         when (< x w)
+         append (loop for y from row below (+ row +block-size+)
+                      when (< y h)
+                      collect (aref (render-buffer render) (+ (* y w) x))))))
+
+(define-test render-block-row-test
+    :parent mandelbrot-gtk
+  (let* ((w 100)
+         (h 100)
+         (render (test-render w h))
+         (max-iter (view-max-iter (render-view render))))
+    (render-block-row render 0)
+    (render-block-row render 96)
+    
+    ;; check row 0 blocks
+    (multiple-value-bind (cr ci) (pixel->point (render-view render) w h 0 0)
+      (let ((block-values (collect-block-values-at 0 render w h))
+            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))
+        (is equal (list corner-pixel) block-values)))
+    
+    ;; check that row 8 blocks didn't get written to
+    (is equal (list 0) (collect-block-values-at 8 render w h))
+
+    ;; check row 96 blocks
+    (multiple-value-bind (cr ci) (pixel->point (render-view render) w h 96 96)
+      (let ((block-values (collect-block-values-at 96 render w h))
+            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))
+        (is = corner-pixel (aref (render-buffer render) (+ (* 99 w) 99)))
+        (is equal (list corner-pixel) block-values)))))

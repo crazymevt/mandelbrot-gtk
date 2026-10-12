@@ -5,6 +5,7 @@
 (defvar *view* nil)
 (defvar *render* nil)
 (sb-ext:defglobal **generation** 0)
+(defconstant +block-size+ 8)
 
 (defstruct view
   (cx -0.5d0 :type double-float)
@@ -26,8 +27,8 @@
 ;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
 ;;; function it calls) changes the running program.
 
-(defun fit-view (width height)
-  (make-view :max-iter 5000 :scale (max (/ 3.5d0 width) (/ 2.5d0 height))))  
+(defun fit-view (width height &key (max-iter 5000))
+  (make-view :max-iter max-iter :scale (max (/ 3.5d0 width) (/ 2.5d0 height))))  
 
 (defun pixel-offset (stride x y)
   (+ (* y stride) (* x 4)))
@@ -95,6 +96,27 @@
     (setf (view-cx new-view) cx
           (view-cy new-view) cy)
     new-view))
+
+
+(defun render-block-row (render y)
+  (declare (optimize speed))
+  (declare (type (unsigned-byte 16) y))
+  (let* ((width (render-width render))
+         (height (render-height render))
+         (buffer (render-buffer render))
+         (view (render-view render))
+         (max-iter (view-max-iter view)))
+    (loop for x from 0 below width by +block-size+
+          do (multiple-value-bind (cr ci) (pixel->point view width height x y)
+               (let ((pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))
+                 (loop for block-y from 0 below +block-size+
+                       for buffer-y = (+ block-y y)
+                       when (< buffer-y height)
+                       do (loop for block-x from 0 below +block-size+
+                                for buffer-x = (+ x block-x)
+                                when (< buffer-x width)
+                                do (setf (aref buffer (+ (* buffer-y width) buffer-x)) pixel))))))))
+
 
 (defun render-row (render y)
   (declare (optimize speed))
@@ -181,7 +203,7 @@
       (glib:timeout-add glib:+priority-default+ 16
                         (lambda () 
                           (when (or (null *render*)
-                                     (/= (render-rows-done *render*) (render-drawn-rows *render*)))
+                                    (/= (render-rows-done *render*) (render-drawn-rows *render*)))
                             (gtk:widget-queue-draw area))
                           running))
     
