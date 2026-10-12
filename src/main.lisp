@@ -2,11 +2,13 @@
 
 (in-package #:mandelbrot-gtk)
 
+(defvar *render* nil)
+
 (defstruct view
   (cx -0.5d0 :type double-float)
   (cy 0d0 :type double-float)
   (scale (error "A view needs :scale") :type double-float)
-  (max-iter 256 :type (integer 1 1000000)))
+  (max-iter 256 :type fixnum))
 
 (defstruct render
   (buffer (error "render needs :buffer") :type (simple-array (unsigned-byte 32) (*)))
@@ -88,6 +90,7 @@
                              :width width
                              :height height
                              :view view)))
+    (setf *render* render)
     (values render
             (loop for thread from 0 below threads 
                   collect (bt:make-thread (lambda () 
@@ -107,12 +110,16 @@
                            (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))))
     buffer))
 
-    
+
 (defun draw (area cr width height)
   (declare (ignore area))
   (let ((surface (cairo:image-surface-create :argb32 width height))
         (view (fit-view width height)))
-    (buffer->surface (render-buffer-single view width height) width height surface)
+    (unless (and *render*
+                 (= width (render-width *render*))
+                 (= height (render-height *render*)))
+      (start-render view width height 12))
+    (buffer->surface (render-buffer *render*) width height surface)
     (cairo:set-source-surface cr surface 0 0)
     (cairo:paint cr)))
 
@@ -120,10 +127,14 @@
   "Open the main window."
   (let ((window (make-instance 'gtk:application-window
                                :application app :title "mandelbrot-gtk"
-                               :default-width 1024 :default-height 768)))
+                               :default-width 1024 :default-height 768))
+        (running t))
     (let ((area (gtk:drawing-area-new)))
       (gtk:window-set-child window area)
-      (gtk:drawing-area-set-draw-func area 'draw))
+      (gtk:drawing-area-set-draw-func area 'draw)
+      (glib:timeout-add glib:+priority-default+ 16
+                        (lambda () (gtk:widget-queue-draw area) running)))
+    (gobject:connect window :close-request (lambda (w) (declare (ignore w)) (setf running nil) nil))
     (gtk:window-present window)))
 
 (defun main ()
