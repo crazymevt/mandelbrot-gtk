@@ -3,25 +3,27 @@
 (in-package #:mandelbrot-gtk)
 
 (defvar *render* nil)
+(sb-ext:defglobal **generation** 0)
 
 (defstruct view
   (cx -0.5d0 :type double-float)
   (cy 0d0 :type double-float)
   (scale (error "A view needs :scale") :type double-float)
-  (max-iter 256 :type fixnum))
+  (max-iter 256 :type (integer 1 1000000)))
 
 (defstruct render
   (buffer (error "render needs :buffer") :type (simple-array (unsigned-byte 32) (*)))
   (width (error "render needs :width") :type (unsigned-byte 16))
   (height (error "render needs :height") :type (unsigned-byte 16))
   (view (error "render needs :view") :type view)
+  (generation (error "render needs :generation") :type fixnum)
   (next-row 0 :type sb-ext:word))
 
 ;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
 ;;; function it calls) changes the running program.
 
 (defun fit-view (width height)
-  (make-view :scale (max (/ 3.5d0 width) (/ 2.5d0 height))))  
+  (make-view :max-iter 5000 :scale (max (/ 3.5d0 width) (/ 2.5d0 height))))  
 
 (defun pixel-offset (stride x y)
   (+ (* y stride) (* x 4)))
@@ -81,15 +83,17 @@
 (defun render-worker (render)
   (let ((height (render-height render)))
     (loop for y = (sb-ext:atomic-incf (render-next-row render))
-          until (>= y height)
+          until (or (>= y height) (> **generation** (render-generation render)))
           do (render-row render y))))
 
 (defun start-render (view width height threads)
   (declare (type (unsigned-byte 16) width height))
+  (incf **generation**)
   (let ((render (make-render :buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32))
                              :width width
                              :height height
-                             :view view)))
+                             :view view
+                             :generation **generation**)))
     (setf *render* render)
     (values render
             (loop for thread from 0 below threads 
