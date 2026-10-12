@@ -2,6 +2,7 @@
 
 (in-package #:mandelbrot-gtk)
 
+(defvar *view* nil)
 (defvar *render* nil)
 (sb-ext:defglobal **generation** 0)
 
@@ -67,6 +68,22 @@
     (values (+ (view-cx view) shift-x)
             (- (view-cy view) shift-y))))
 
+(defun zoom-view (view width height mx my factor)
+  (let* ((dx (- mx (/ width 2d0)))
+         (dy (- my (/ height 2d0)))
+         (shift-mx (* (view-scale view) dx))
+         (shift-my (* (view-scale view) dy))
+         (cr (+ (view-cx view) shift-mx))
+         (ci (- (view-cy view) shift-my))
+         (scale (* (view-scale view) factor))
+         (cx (- cr (* scale dx)))
+         (cy (+ ci (* scale dy)))
+         (new-view (copy-view view)))
+    (setf (view-cx new-view) cx
+          (view-cy new-view) cy
+          (view-scale new-view) scale)
+    new-view))
+
 (defun render-row (render y)
   (declare (optimize speed))
   (declare (type (unsigned-byte 16) y))
@@ -117,12 +134,12 @@
 
 (defun draw (area cr width height)
   (declare (ignore area))
-  (let ((surface (cairo:image-surface-create :argb32 width height))
-        (view (fit-view width height)))
+  (let ((surface (cairo:image-surface-create :argb32 width height)))
+    (or *view* (setf *view* (fit-view width height)))
     (unless (and *render*
                  (= width (render-width *render*))
                  (= height (render-height *render*)))
-      (start-render view width height 12))
+      (start-render *view* width height 12))
     (buffer->surface (render-buffer *render*) width height surface)
     (cairo:set-source-surface cr surface 0 0)
     (cairo:paint cr)))

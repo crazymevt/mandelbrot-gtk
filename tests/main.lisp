@@ -82,3 +82,15 @@
   (is = #xFF000000 (iter->pixel 256 256))
   (is = #xFF000000 (iter->pixel 0 0))
   (is = #xFF020202 (iter->pixel 3 256)))
+
+(define-test zoom-view-test
+    :parent mandelbrot-gtk
+  (let* ((w 1024)
+         (h 768)
+         (view (fit-view w h))
+         (zoom (zoom-view view w h 300 200 0.5d0)))
+    (multiple-value-bind (zoom-x zoom-y) (pixel->point zoom w h 300 200)
+      (multiple-value-bind (org-x org-y) (pixel->point view w h 300 200)
+      (true (< (abs (- zoom-x org-x)) 1d-12))
+      (true (< (abs (- zoom-y org-y)) 1d-12))))))
+

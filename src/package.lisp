@@ -3,4 +3,4 @@
 (defpackage #:mandelbrot-gtk
   (:use #:cl)
   (:export #:mandelbrot-point #:main #:buffer->surface #:make-pixel #:pixel->point #:make-view 
-   #:fit-view #:view-scale #:iter->pixel))
+   #:fit-view #:view-scale #:view-cx #:view-cy #:iter->pixel #:zoom-view))
