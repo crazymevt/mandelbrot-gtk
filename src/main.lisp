@@ -132,16 +132,24 @@
                      (iter->pixel (mandelbrot-point cr ci max-iter) max-iter))))))
 
 (defun render-worker (render)
-  (let ((height (render-height render)))
+  (let* ((height (render-height render))
+         (coarse-height (ceiling height +block-size+)))
     (loop for y = (sb-ext:atomic-incf (render-next-row render))
-          until (or (>= y height) (> **generation** (render-generation render)))
-          do (render-row render y)
+          until (or (>= y (+ height coarse-height)) (> **generation** (render-generation render)))
+          do (if (>= y coarse-height)
+                 (progn 
+                   (loop until (>= (render-rows-done render) coarse-height)
+                         do (sb-thread:thread-yield))
+                   (render-row render (- y coarse-height)))
+                 (render-block-row render (* y +block-size+)))          
           (sb-ext:atomic-incf (render-rows-done render)))))
+                 
+          
 
 (defun start-render (view width height threads)
   (declare (type (unsigned-byte 16) width height))
   (incf **generation**)
-  (let ((render (make-render :buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32))
+  (let ((render (make-render :buffer (make-array (* width height) :initial-element #xFF000000 :element-type '(unsigned-byte 32))
                              :width width
                              :height height
                              :view view
