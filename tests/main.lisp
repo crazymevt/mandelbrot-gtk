@@ -79,9 +79,11 @@
 
 (define-test iter->pixel-test
     :parent mandelbrot-gtk
-  (is = #xFF000000 (iter->pixel 256 256))
-  (is = #xFF000000 (iter->pixel 0 0))
-  (is = #xFF020202 (iter->pixel 3 256)))
+  (let* ((stops '((0 0 0 0) (1/2 255 255 255) (1 0 0 0)))
+         (palette (make-palette stops 4)))
+    (is = #xFF000000 (iter->pixel 256 256 palette))
+    (is = #xFF000000 (iter->pixel 0 0 palette))
+    (is = #xFF808080 (iter->pixel 3 256 palette))))
 
 (define-test zoom-view-test
     :parent mandelbrot-gtk
@@ -136,7 +138,7 @@
     ;; check row 0 blocks
     (multiple-value-bind (cr ci) (pixel->point (render-view render) w h 0 0)
       (let ((block-values (collect-block-values-at 0 render w h))
-            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))
+            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter *palette*)))
         (is equal (list corner-pixel) block-values)))
     
     ;; check that row 8 blocks didn't get written to
@@ -145,6 +147,15 @@
     ;; check row 96 blocks
     (multiple-value-bind (cr ci) (pixel->point (render-view render) w h 96 96)
       (let ((block-values (collect-block-values-at 96 render w h))
-            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))
+            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter *palette*)))
         (is = corner-pixel (aref (render-buffer render) (+ (* 99 w) 99)))
         (is equal (list corner-pixel) block-values)))))
+
+(define-test make-palette-test
+    :parent mandelbrot-gtk
+  (let* ((stops '((0 0 0 0) (1/2 255 255 255) (1 0 0 0)))
+         (palette (make-palette stops 4)))
+    (is = (make-pixel 0 7 100) (aref *palette* 0)) ; test our current palette first stop
+    ;; test palette
+    (is = 4 (length palette))
+    (is = (make-pixel 255 255 255) (aref palette 2))))

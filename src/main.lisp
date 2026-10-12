@@ -24,8 +24,45 @@
   (rows-done 0 :type sb-ext:word)
   (next-row 0 :type sb-ext:word))
 
+(defparameter *palette-stops*
+  '((0.0    0   7 100)    ; deep blue
+    (0.16  32 107 203)
+    (0.42 237 255 255)    ; near white
+    (0.6425 255 170 0)    ; orange
+    (0.8575 0   2   0)    ; almost black
+    (1.0    0   7 100)))   ; same as the first: the cycle wraps without a seam
+
+
 ;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
 ;;; function it calls) changes the running program.
+
+(declaim (inline make-pixel))
+(defun make-pixel (r g b)
+  (declare (type (unsigned-byte 8) r g b))
+  (logior 
+   #xFF000000 ;; this is the alpha
+   (ash r 16)
+   (ash g 8)
+   b))
+
+(defun make-palette (stops size)
+  (let ((palette (make-array size :element-type '(unsigned-byte 32))))
+    (loop for i from 0 below size
+          for pos = (/ i size)
+          do (loop for (stop-a stop-b) on stops
+                   for pos_a = (first stop-a)
+                   for pos_b = (first stop-b)
+                   while stop-b
+                   when (and (>= pos pos_a) (< pos pos_b))
+                   do (let* ((frac  (/ (- pos pos_a) (- pos_b pos_a)))
+                             (r (round (+ (second stop-a) (* frac (- (second stop-b) (second stop-a))))))
+                             (g (round (+ (third stop-a) (* frac (- (third stop-b) (third stop-a))))))
+                             (b (round (+ (fourth stop-a) (* frac (- (fourth stop-b) (fourth stop-a)))))))
+                        (setf (aref palette i) (make-pixel r g b)))))
+    palette))
+                                      
+(defparameter *palette* (make-palette *palette-stops* 256))                                      
+    
 
 (defun fit-view (width height &key (max-iter 5000))
   (make-view :max-iter max-iter :scale (max (/ 3.5d0 width) (/ 2.5d0 height))))  
@@ -44,21 +81,11 @@
                          (aref buffer (+ (* y width) x)))))
     (cairo:surface-mark-dirty surface)))
   
-(declaim (inline make-pixel))
-(defun make-pixel (r g b)
-  (declare (type (unsigned-byte 8) r g b))
-  (logior 
-   #xFF000000 ;; this is the alpha
-   (ash r 16)
-   (ash g 8)
-   b))
-
 (declaim (inline iter->pixel))
-(defun iter->pixel (n max-iter)
-  (let ((grey (if (= n max-iter) 
-                  0
-                  (floor (* 255 n) max-iter))))
-    (make-pixel grey grey grey)))
+(defun iter->pixel (n max-iter palette)
+  (if (= n max-iter) 
+      #xFF000000
+      (aref palette (mod n (length palette)))))
 
 (declaim (inline pixel->point))
 (defun pixel->point (view width height x y)
@@ -105,10 +132,12 @@
          (height (render-height render))
          (buffer (render-buffer render))
          (view (render-view render))
-         (max-iter (view-max-iter view)))
+         (max-iter (view-max-iter view))
+         (palette *palette*))
+    (declare (type (simple-array (unsigned-byte 32) (*)) palette))
     (loop for x from 0 below width by +block-size+
           do (multiple-value-bind (cr ci) (pixel->point view width height x y)
-               (let ((pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))
+               (let ((pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter palette)))
                  (loop for block-y from 0 below +block-size+
                        for buffer-y = (+ block-y y)
                        when (< buffer-y height)
@@ -125,11 +154,13 @@
          (height (render-height render))
          (buffer (render-buffer render))
          (view (render-view render))
-         (max-iter (view-max-iter view)))
+         (max-iter (view-max-iter view))
+         (palette *palette*))
+    (declare (type (simple-array (unsigned-byte 32) (*)) palette))
     (loop for x from 0 below width
           do (multiple-value-bind (cr ci) (pixel->point view width height x y)
                (setf (aref buffer (+ (* y width) x))
-                     (iter->pixel (mandelbrot-point cr ci max-iter) max-iter))))))
+                     (iter->pixel (mandelbrot-point cr ci max-iter) max-iter palette))))))
 
 (defun render-worker (render)
   (let* ((height (render-height render))
@@ -171,13 +202,15 @@
   (declare (optimize speed))
   (declare (type (unsigned-byte 16) width height))
   (let ((buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32)))
-        (max-iter (view-max-iter view)))
+        (max-iter (view-max-iter view))
+        (palette *palette*))
+    (declare (type (simple-array (unsigned-byte 32) (*)) palette))
     (loop for y from 0 below height
           do
           (loop for x from 0 below width
                 do (multiple-value-bind (cr ci) (pixel->point view width height x y)
                      (setf (aref buffer (+ (* y width) x))
-                           (iter->pixel (mandelbrot-point cr ci max-iter) max-iter)))))
+                           (iter->pixel (mandelbrot-point cr ci max-iter) max-iter palette)))))
     buffer))
 
 
