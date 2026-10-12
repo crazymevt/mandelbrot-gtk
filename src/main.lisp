@@ -150,13 +150,43 @@
                                :application app :title "mandelbrot-gtk"
                                :default-width 1024 :default-height 768))
         (running t))
-    (let ((area (gtk:drawing-area-new)))
+    (let ((area (gtk:drawing-area-new))
+          (scroll-controller (gtk:event-controller-scroll-new '(:vertical)))
+          (motion-controller (gtk:event-controller-motion-new))
+          (mouse-x nil)
+          (mouse-y nil))
       (gtk:window-set-child window area)
+      (gtk:widget-add-controller area scroll-controller)
+      (gtk:widget-add-controller area motion-controller)
+      
       (gtk:drawing-area-set-draw-func area 'draw)
       (glib:timeout-add glib:+priority-default+ 16
-                        (lambda () (gtk:widget-queue-draw area) running)))
-    (gobject:connect window :close-request (lambda (w) (declare (ignore w)) (setf running nil) nil))
-    (gtk:window-present window)))
+                        (lambda () (gtk:widget-queue-draw area) running))
+    
+      (gobject:connect scroll-controller :scroll
+                       (lambda (controller dx dy)
+                         (declare (ignore controller dx))
+                         (when (and *view* mouse-x mouse-y (not (zerop dy)))
+                           (let ((factor (if (< dy 0) 0.8d0 1.25d0))
+                                 (width (gtk:widget-get-width area))
+                                 (height (gtk:widget-get-height area)))
+                               (setf *view* (zoom-view *view* width height mouse-x mouse-y factor))
+                               (setf *render* nil)
+                               t))))
+    
+      (gobject:connect motion-controller :motion
+                       (lambda (controller x y)
+                         (declare (ignore controller))
+                         (setf mouse-x x)
+                         (setf mouse-y y)))
+    
+      (gobject:connect window :close-request (lambda (w) 
+                                               (declare (ignore w)) 
+                                               (setf running nil
+                                                     *view* nil
+                                                     *render* nil)
+                                               nil))
+      (gtk:window-present window))))
 
 (defun main ()
   "Run the application; returns when its last window closes. On macOS it
