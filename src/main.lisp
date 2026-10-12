@@ -134,11 +134,16 @@
 (defun render-worker (render)
   (let* ((height (render-height render))
          (coarse-height (ceiling height +block-size+)))
+    ;; this first loops over course jobs and then over fine jobs
+    ;; existing at any point if a new generation has been added 
+    ;; aka a user panned or zoomed
     (loop for y = (sb-ext:atomic-incf (render-next-row render))
           until (or (>= y (+ height coarse-height)) (> **generation** (render-generation render)))
           do (if (>= y coarse-height)
                  (progn 
-                   (loop until (>= (render-rows-done render) coarse-height)
+                   ;; only wait if a new generation hasn't been addded
+                   ;; or until all the course rows are complete
+                   (loop until (or (>= (render-rows-done render) coarse-height) (> **generation** (render-generation render)))
                          do (sb-thread:thread-yield))
                    (render-row render (- y coarse-height)))
                  (render-block-row render (* y +block-size+)))          
