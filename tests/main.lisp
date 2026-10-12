@@ -94,3 +94,15 @@
       (true (< (abs (- zoom-x org-x)) 1d-12))
       (true (< (abs (- zoom-y org-y)) 1d-12))))))
 
+(define-test pan-view-test
+    :parent mandelbrot-gtk
+  (let* ((w 100)
+         (h 100)
+         (x 50)
+         (y 50)
+         (view (make-view :scale 1d0))
+         (panned (pan-view view 10 5)))
+    (multiple-value-bind (new-x new-y) (pixel->point panned w h (+ x 10) (+ y 5))
+      (multiple-value-bind (org-x org-y) (pixel->point view w h x y)
+      (true (< (abs (- new-x org-x)) 1d-12))
+      (true (< (abs (- new-y org-y)) 1d-12))))))
