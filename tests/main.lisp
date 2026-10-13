@@ -9,9 +9,15 @@
 
 (define-test mandelbrot-point-test
     :parent mandelbrot-gtk
-  (is = 256 (mandelbrot-point 0d0 0d0 256))
-  (is = 256 (mandelbrot-point -1d0 0d0 256))
-  (is = 3 (mandelbrot-point 1d0 0d0 256)))
+  (is = 256 (mandelbrot-point 0d0 0d0 256 :bailout 4d0))
+  (is = 256 (mandelbrot-point -1d0 0d0 256 :bailout 4d0))
+  (is = 3 (mandelbrot-point 1d0 0d0 256 :bailout 4d0))
+  (multiple-value-bind (i z) (mandelbrot-point 0d0 0d0 256)
+    (is = 256 i)
+    (is = 0d0 z))
+  (multiple-value-bind (i z) (mandelbrot-point 1d0 0d0 256)
+    (is = 4 i)
+    (is = 676d0 z)))
 
 (define-test buffer->surface-test
     :parent mandelbrot-gtk
@@ -159,3 +165,39 @@
     ;; test palette
     (is = 4 (length palette))
     (is = (make-pixel 255 255 255) (aref palette 2))))
+
+(define-test lerp-pixel-test
+    :parent mandelbrot-gtk
+  (let ((p0 (make-pixel 0 0 0))
+        (p1 (make-pixel 200 100 50))
+        (frac 0.5d0))
+    (is = (make-pixel 100 50 25) (lerp-pixel p0 p1 frac))
+    (is = p0 (lerp-pixel p0 p1 0d0))
+    (is = p1 (lerp-pixel p0 p1 1d0))))
+
+(define-test smooth-iter-test
+    :parent mandelbrot-gtk
+  (true (< (abs (- (smooth-iter 5 256d0)
+                   (smooth-iter 6 (* 256d0 256d0))))
+           1d-9)))
+
+(define-test smooth-pixel-test
+    :parent mandelbrot-gtk
+  ;; A uniform palette: any escaped point must get that color, whatever
+  ;; its count, magnitude or density, so indexing and wrapping can't go wrong.
+  (let* ((color (make-pixel 12 34 56))
+         (uniform (make-array 8 :element-type '(unsigned-byte 32) :initial-element color)))
+    (dolist (args '((0 300d0 1d0) (1 256.5d0 1d0) (50 1d6 1d0) (50 1d6 3.7d0) (999 1d4 0.25d0)))
+      (destructuring-bind (n mag2 density) args
+        (is = color (smooth-pixel n mag2 1000 uniform density)
+            "n ~d, mag2 ~f, density ~f" n mag2 density)))
+    (is = #xFF000000 (smooth-pixel 1000 0d0 1000 uniform 1d0) "inside the set"))
+  ;; Blending: pick DENSITY so that idx lands on a known fraction.
+  (let* ((c0 (make-pixel 0 0 0))
+         (c1 (make-pixel 200 100 48))
+         (palette (make-array 2 :element-type '(unsigned-byte 32) :initial-contents (list c0 c1)))
+         (smooth (smooth-iter 10 1000d0)))
+    ;; idx = 0.5: halfway from entry 0 to entry 1
+    (is = (make-pixel 100 50 24) (smooth-pixel 10 1000d0 1000 palette (/ 0.5d0 smooth)))
+    ;; idx = 1.25: from entry 1 wrapping to entry 0, a quarter of the way
+    (is = (make-pixel 150 75 36) (smooth-pixel 10 1000d0 1000 palette (/ 1.25d0 smooth)))))

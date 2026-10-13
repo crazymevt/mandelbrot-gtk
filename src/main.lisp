@@ -33,9 +33,6 @@
     (1.0    0   7 100)))   ; same as the first: the cycle wraps without a seam
 
 
-;;; Handlers are connected by symbol, so redefining ACTIVATE (or a
-;;; function it calls) changes the running program.
-
 (declaim (inline make-pixel))
 (defun make-pixel (r g b)
   (declare (type (unsigned-byte 8) r g b))
@@ -44,6 +41,47 @@
    (ash r 16)
    (ash g 8)
    b))
+
+(declaim (inline lerp-pixel))
+(defun lerp-pixel (p0 p1 frac)
+  (declare (optimize speed))
+  (declare (type (unsigned-byte 32) p0 p1)
+           (type double-float frac))
+  (let ((p0r (ldb (byte 8 16) p0))
+        (p0g (ldb (byte 8 8)  p0))
+        (p0b (ldb (byte 8 0)  p0))
+        (p1r (ldb (byte 8 16) p1))
+        (p1g (ldb (byte 8 8)  p1))
+        (p1b (ldb (byte 8 0)  p1)))
+    (make-pixel (round (+ p0r (* frac (- p1r p0r))))
+                (round (+ p0g (* frac (- p1g p0g))))
+                (round (+ p0b (* frac (- p1b p0b)))))))
+
+(declaim (inline smooth-iter))
+(defun smooth-iter (n mag2)
+  (declare (optimize speed))
+  (declare (type fixnum n)
+           (type (double-float 256d0) mag2))
+  (let* ((logz (/ (log mag2) 2))
+         (smooth (+ n (- 1 (/ (log logz) (log 2d0))))))
+    smooth))
+
+(declaim (inline smooth-pixel))
+(defun smooth-pixel (n mag2 max-iter palette density)
+  (declare (optimize speed))
+  (declare (type fixnum n max-iter)
+           (type (simple-array (unsigned-byte 32) (*)) palette)
+           (type double-float mag2 density))
+  (if (= n max-iter)
+      #xFF000000
+      (let ((idx (* (smooth-iter n (the (double-float 256d0) mag2)) density))
+            (size (length palette)))
+        (declare (type (double-float -1d0 1d7) idx))
+        (multiple-value-bind (whole frac) (floor idx)
+          (let ((i0 (mod whole size))
+                (i1 (mod (1+ whole) size)))
+            (lerp-pixel (aref palette i0) (aref palette i1) frac))))))
+        
 
 (defun make-palette (stops size)
   (let ((palette (make-array size :element-type '(unsigned-byte 32))))
