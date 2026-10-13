@@ -144,7 +144,8 @@
     ;; check row 0 blocks
     (multiple-value-bind (cr ci) (pixel->point (render-view render) w h 0 0)
       (let ((block-values (collect-block-values-at 0 render w h))
-            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter *palette*)))
+            (corner-pixel (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
+                            (smooth-pixel n mag2 max-iter palette density))))
         (is equal (list corner-pixel) block-values)))
     
     ;; check that row 8 blocks didn't get written to
@@ -153,7 +154,8 @@
     ;; check row 96 blocks
     (multiple-value-bind (cr ci) (pixel->point (render-view render) w h 96 96)
       (let ((block-values (collect-block-values-at 96 render w h))
-            (corner-pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter *palette*)))
+            (corner-pixel (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
+                            (smooth-pixel n mag2 max-iter palette density))))
         (is = corner-pixel (aref (render-buffer render) (+ (* 99 w) 99)))
         (is equal (list corner-pixel) block-values)))))
 

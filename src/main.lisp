@@ -74,7 +74,7 @@
            (type double-float mag2 density))
   (if (= n max-iter)
       #xFF000000
-      (let ((idx (* (smooth-iter n (the (double-float 256d0) mag2)) density))
+      (let ((idx (* (max 0d0 (smooth-iter n (the (double-float 256d0) mag2))) density))
             (size (length palette)))
         (declare (type (double-float -1d0 1d7) idx))
         (multiple-value-bind (whole frac) (floor idx)
@@ -99,7 +99,8 @@
                         (setf (aref palette i) (make-pixel r g b)))))
     palette))
                                       
-(defparameter *palette* (make-palette *palette-stops* 256))                                      
+(defparameter *palette* (make-palette *palette-stops* 256))
+(sb-ext:defglobal **color-density** 1d0)
     
 
 (defun fit-view (width height &key (max-iter 5000))
@@ -171,11 +172,14 @@
          (buffer (render-buffer render))
          (view (render-view render))
          (max-iter (view-max-iter view))
-         (palette *palette*))
-    (declare (type (simple-array (unsigned-byte 32) (*)) palette))
+         (palette *palette*)
+         (density **color-density**))
+    (declare (type (simple-array (unsigned-byte 32) (*)) palette)
+             (type double-float density))
     (loop for x from 0 below width by +block-size+
           do (multiple-value-bind (cr ci) (pixel->point view width height x y)
-               (let ((pixel (iter->pixel (mandelbrot-point cr ci max-iter) max-iter palette)))
+               (let ((pixel (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
+                              (smooth-pixel n mag2 max-iter palette density))))
                  (loop for block-y from 0 below +block-size+
                        for buffer-y = (+ block-y y)
                        when (< buffer-y height)
@@ -193,12 +197,15 @@
          (buffer (render-buffer render))
          (view (render-view render))
          (max-iter (view-max-iter view))
-         (palette *palette*))
-    (declare (type (simple-array (unsigned-byte 32) (*)) palette))
+         (palette *palette*)
+         (density **color-density**))
+    (declare (type (simple-array (unsigned-byte 32) (*)) palette)
+             (type double-float density))
     (loop for x from 0 below width
           do (multiple-value-bind (cr ci) (pixel->point view width height x y)
                (setf (aref buffer (+ (* y width) x))
-                     (iter->pixel (mandelbrot-point cr ci max-iter) max-iter palette))))))
+                          (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
+                            (smooth-pixel n mag2 max-iter palette density)))))))
 
 (defun render-worker (render)
   (let* ((height (render-height render))
@@ -241,14 +248,17 @@
   (declare (type (unsigned-byte 16) width height))
   (let ((buffer (make-array (* width height) :initial-element 0 :element-type '(unsigned-byte 32)))
         (max-iter (view-max-iter view))
-        (palette *palette*))
+        (palette *palette*)
+        (density **color-density**))
     (declare (type (simple-array (unsigned-byte 32) (*)) palette))
+    (declare (type double-float density))
     (loop for y from 0 below height
           do
           (loop for x from 0 below width
                 do (multiple-value-bind (cr ci) (pixel->point view width height x y)
                      (setf (aref buffer (+ (* y width) x))
-                           (iter->pixel (mandelbrot-point cr ci max-iter) max-iter palette)))))
+                           (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
+                             (smooth-pixel n mag2 max-iter palette density))))))
     buffer))
 
 
