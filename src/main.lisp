@@ -24,13 +24,45 @@
   (rows-done 0 :type sb-ext:word)
   (next-row 0 :type sb-ext:word))
 
-(defparameter *palette-stops*
+(defparameter *palette-stops-original*
   '((0.0    0   7 100)    ; deep blue
     (0.16  32 107 203)
     (0.42 237 255 255)    ; near white
     (0.6425 255 170 0)    ; orange
     (0.8575 0   2   0)    ; almost black
     (1.0    0   7 100)))   ; same as the first: the cycle wraps without a seam
+
+(defparameter *palette-stops-fire*
+  '((0.0    0   0   0)
+    (0.25 128   0   0)    ; dark red
+    (0.5  255  90   0)    ; orange
+    (0.75 255 220  60)    ; yellow
+    (0.9  255 255 230)    ; near white
+    (1.0    0   0   0)))
+
+(defparameter *palette-stops-ocean*
+  '((0.0    0  10  30)    ; navy
+    (0.3    0  80 120)    ; deep teal
+    (0.55  40 180 200)    ; cyan
+    (0.75 220 250 255)    ; ice white
+    (1.0    0  10  30)))
+
+(defparameter *palette-stops-neon*
+  '((0.0   10   0  20)
+    (0.25 120   0 180)    ; purple
+    (0.5  255  40 160)    ; magenta
+    (0.75   0 230 255)    ; cyan
+    (1.0   10   0  20)))
+
+(defparameter *palette-stops-viridis*
+  '((0.0   68   1  84)
+    (0.25  59  82 139)
+    (0.5   33 145 140)
+    (0.75  94 201  98)
+    (0.9  253 231  37)
+    (1.0   68   1  84)))   ; the wrap from yellow back to purple is abrupt but short
+
+(defparameter *palette-stops* *palette-stops-fire*)
 
 
 (declaim (inline make-pixel))
@@ -204,8 +236,8 @@
     (loop for x from 0 below width
           do (multiple-value-bind (cr ci) (pixel->point view width height x y)
                (setf (aref buffer (+ (* y width) x))
-                          (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
-                            (smooth-pixel n mag2 max-iter palette density)))))))
+                     (multiple-value-bind (n mag2) (mandelbrot-point cr ci max-iter)
+                       (smooth-pixel n mag2 max-iter palette density)))))))
 
 (defun render-worker (render)
   (let* ((height (render-height render))
