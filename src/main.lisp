@@ -76,7 +76,7 @@
       #xFF000000
       (let ((idx (* (max 0d0 (smooth-iter n (the (double-float 256d0) mag2))) density))
             (size (length palette)))
-        (declare (type (double-float -1d0 1d7) idx))
+        (declare (type (double-float 0d0 1d7) idx))
         (multiple-value-bind (whole frac) (floor idx)
           (let ((i0 (mod whole size))
                 (i1 (mod (1+ whole) size)))
